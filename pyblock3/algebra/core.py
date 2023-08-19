@@ -27,7 +27,10 @@ import numbers
 from collections import Counter
 from itertools import accumulate, groupby
 
-from .symmetry import BondInfo, BondFusingInfo
+try:
+    from .symmetry import BondInfo, BondFusingInfo
+except ImportError:
+    from symmetry import BondInfo, BondFusingInfo
 
 
 def method_alias(name):

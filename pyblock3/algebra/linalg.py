@@ -22,7 +22,10 @@ Linear algebra functions at module level.
 Including some functions not available from numpy.linalg.
 """
 
-from .core import method_alias
+try:
+    from .core import method_alias
+except ImportError:
+    from core import method_alias
 import numpy as np
 
 
@@ -271,3 +274,76 @@ def conjugate_gradient(a, x, b, max_iter=5000, conv_thrd=1E-7, iprint=False):
     if xiter == max_iter:
         raise RuntimeError("Error : linear solver (cg) not converged!")
     return func, x, xiter + 1
+
+def bicgstab(a, x, b, max_iter=5000, conv_thrd=1E-7, iprint=False):
+    """ Use BIConjugate Gradient STABilized iteration to solve Ax = b.
+
+    A can be any complex-valued matrix
+    """
+    # See Figure 2.10 of SIAM templates
+    aa = a.diag() if hasattr(a, "diag") else None
+    r = -(a @ x) + b
+    error = np.dot(r.conj(), r)
+    if np.sqrt(np.abs(error)) < conv_thrd:
+        func = np.dot(x.conj(), b)
+        if iprint:
+            print("%5d %15.8f %9.2E" % (0, func, error))
+        return func, x, 1
+    xiter = 0
+    rtilde = r.copy()
+    while xiter < max_iter:
+        xiter += 1
+        rho = np.dot(rtilde.conj(), r)
+        if rho == 0:
+            raise RuntimeError("Error : linear solver (bicgstab) not converged! rho=0")
+        if xiter == 1:
+            p = r
+        else:
+            beta = (rho / rhoLast) * (alpha / omega)
+            p = r + beta * (p - omega * v)
+        pHat = _precondition(p, aa)
+        v = a @ pHat
+        alpha = rho / (np.dot(rtilde.conj(), v))
+        s = r - alpha * v
+        error = np.sqrt(np.abs(np.dot(s.conj(), s)))
+        if error < conv_thrd:
+            x = x + alpha * pHat
+            break
+        sHat = _precondition(s, aa)
+        t = a @ sHat
+        omega = np.dot(t.conj(), s) / np.dot(t.conj(), t)
+        x = x + alpha * pHat + omega * sHat
+        del sHat, pHat
+        r = s - omega * t
+        rhoLast = rho
+        error = np.dot(r.conj(), r)
+        if np.sqrt(np.abs(error)) < conv_thrd:
+            break
+        if omega == 0:
+            raise RuntimeError("Error : linear solver (bicgstab) not converged! omega=0")
+        if iprint:
+            func = np.dot(x.conj(), b)
+            print("%5d %15.8f %9.2E" % (xiter, func, error))
+    if xiter == max_iter:
+        raise RuntimeError("Error : linear solver (bicgstab) not converged!")
+    func = np.dot(x.conj(), b)
+    return func, x, xiter + 1
+
+
+if __name__ == "__main__":
+    N = 8
+    np.random.seed(432)
+    A = np.random.rand(N,N)
+    A = A + 1j * np.random.rand(N,N)
+    A = A + A.T.conj()
+    A[np.diag_indices_from(A)] += N
+    x = np.random.rand(N)
+    b = np.random.rand(N)
+    x = x + 1j * np.random.rand(N)
+    b = b + 1j * np.random.rand(N)
+    xCorrect = np.linalg.solve(A,b)
+    #f,x,_ = conjugate_gradient(A,x,b,iprint=True, conv_thrd=1e-12)
+    print("func=",np.dot(xCorrect.conj(), b))
+    f,x,_ = bicgstab(A,x,b,iprint=True, conv_thrd=1e-12)
+    print("DIFF",np.linalg.norm(xCorrect-x))
+    print(np.linalg.norm(A @ x - b))
